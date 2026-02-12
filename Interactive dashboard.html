@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Valuation Dispersion Dashboard</title>
+  <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
+    h1 { margin: 0 0 6px; font-size: 22px; }
+    .sub { margin: 0 0 18px; color: #444; }
+    .grid { display: grid; grid-template-columns: 1.6fr 1fr; gap: 18px; align-items: start; }
+    .card { border: 1px solid #e6e6e6; border-radius: 12px; padding: 14px 14px 10px; box-shadow: 0 1px 8px rgba(0,0,0,0.04); background: #fff; }
+    .small { color:#555; font-size: 13px; line-height: 1.35; }
+    label { font-size: 13px; color: #333; }
+    select { margin-top: 6px; width: 100%; padding: 8px; border-radius: 10px; border: 1px solid #ddd; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 8px; border-bottom: 1px solid #eee; text-align: right; }
+    th:first-child, td:first-child { text-align: left; }
+    .warn { color:#8a1f1f; background:#fff3f3; border:1px solid #ffd7d7; padding:10px; border-radius:10px; margin-top:10px; }
+    .ok { color:#1a5f2c; background:#f3fff6; border:1px solid #d7ffe1; padding:10px; border-radius:10px; margin-top:10px; }
+    .hint { color:#444; background:#f6f8ff; border:1px solid #e3e8ff; padding:10px; border-radius:10px; margin-top:10px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; white-space: pre-wrap; }
+  </style>
+</head>
+
+<body>
+  <h1>Valuation Dispersion Dashboard</h1>
+  <p class="sub">Low / Base / High valuations by investor (GBP £m). Hover points for detail.</p>
+
+  <div class="grid">
+    <div class="card">
+      <div id="chart" style="height:560px;"></div>
+      <p class="small">
+        <b>How to read:</b> pale line = Low→High range, red dot = Base case.
+        Grey band = illustrative clearing range (edit in code).
+      </p>
+    </div>
+
+    <div class="card">
+      <label for="investorSelect"><b>Investor details</b></label>
+      <select id="investorSelect"></select>
+
+      <div id="investorSummary" class="small" style="margin-top:10px;"></div>
+      <div id="checks" style="margin-top:10px;"></div>
+
+      <div class="hint small">
+        <b>Tip:</b> Your hover text comes from each investor’s <span class="mono">rationale</span> field below.
+        Keep it to 2–5 lines so it reads well in the tooltip.
+      </div>
+
+      <hr style="border:none;border-top:1px solid #eee;margin:14px 0;" />
+
+      <div class="small">
+        <b>Table (sorted by Base)</b>
+      </div>
+      <div id="tableWrap" style="margin-top:8px;"></div>
+    </div>
+  </div>
+
+<script>
+  // =========================================================
+  // 1) EDIT YOUR DATA HERE
+  // Each row MUST satisfy: low < base < high
+  // Rationale is shown on hover exactly like your example.
+  // =========================================================
+  const investors = [
+    {
+      name: "Dutch pension fund",
+      low: 11.80, base: 13.52, high: 15.36,
+      rationale:
+`Base Case Value: £13.52m
+Value Range: £11.80m – £15.36m
+Rationale: Core, long-duration capital. Lower return hurdle supports higher price. Focus on income durability and prime location.`
+    },
+    {
+      name: "German family office",
+      low: 11.42, base: 13.11, high: 15.10,
+      rationale:
+`Base Case Value: £13.11m
+Value Range: £11.42m – £15.10m
+Rationale: Long-hold private capital. Will pay for “safe” City micro-location, but still prices leasing/heritage risk with a conservative yield buffer.`
+    },
+    {
+      name: "Canadian pension fund",
+      low: 11.24, base: 12.87, high: 14.74,
+      rationale:
+`Base Case Value: £12.87m
+Value Range: £11.24m – £14.74m
+Rationale: Institutional core approach. Strong appetite for prime offices, but discounts uncertainty around lease-up and head rent mechanics.`
+    },
+    {
+      name: "US investment fund",
+      low: 10.47, base: 11.73, high: 13.08,
+      rationale:
+`Base Case Value: £11.73m
+Value Range: £10.47m – £13.08m
+Rationale: More return-sensitive capital. Underwrites leasing risk as material; requires higher compensation, pulling the base value down versus pensions/FO.`
+    },
+    {
+      name: "Singapore sovereign fund",
+      low: 10.58, base: 11.66, high: 12.89,
+      rationale:
+`Base Case Value: £11.66m
+Value Range: £10.58m – £12.89m
+Rationale: Institutional global allocator. Disciplined underwriting; likely comfortable with prime City exposure, but not at any price—keeps exit yield conservative.`
+    },
+    {
+      name: "US private equity fund",
+      low: 10.27, base: 11.18, high: 12.16,
+      rationale:
+`Base Case Value: £11.18m
+Value Range: £10.27m – £12.16m
+Rationale: Treats offices as lease-up/value-add. Higher hurdle rate. Strong focus on exit yield and leasing execution risk → lower bid ceiling.`
+    },
+    {
+      name: "UK insurance company",
+      low: 9.23, base: 10.56, high: 12.11,
+      rationale:
+`Base Case Value: £10.56m
+Value Range: £9.23m – £12.11m
+Rationale: Income-first buyer. Wide range reflects sensitivity to stabilisation timing and terminal yield. Likes duration, but penalises void/leasing uncertainty.`
+    },
+    {
+      name: "UAE private fund",
+      low: 8.28, base: 9.44, high: 10.55,
+      rationale:
+`Base Case Value: £9.44m
+Value Range: £8.28m – £10.55m
+Rationale: Opportunistic private capital with higher return requirement. Prices risk hard; only becomes competitive at a discount to institutional pricing.`
+    }
+  ];
+
+  // 2) CLEARING RANGE BAND (edit to match your narrative)
+  const clearingRange = { low: 12.00, high: 12.20 };
+
+  function validateRow(r){ return (r.low < r.base) && (r.base < r.high); }
+
+  // Sort by base descending
+  const sorted = [...investors].sort((a,b)=> b.base - a.base);
+
+  // Build chart segments for low->high ranges
+  const rangeTrace = {
+    type: "scatter",
+    mode: "lines+markers",
+    x: [].concat(...sorted.map(d => [d.low, d.high, null])),
+    y: [].concat(...sorted.map(d => [d.name, d.name, null])),
+    line: { width: 6, color: "rgba(31,119,180,0.35)" },
+    marker: { size: 10, color: "rgba(31,119,180,0.75)" },
+    hoverinfo: "skip",
+    showlegend: false
+  };
+
+  // Base dots with rich hover
+  const baseTrace = {
+    type: "scatter",
+    mode: "markers",
+    x: sorted.map(d => d.base),
+    y: sorted.map(d => d.name),
+    marker: { size: 12, color: "rgba(214,39,40,0.95)" },
+    name: "Base Case Value",
+    hovertemplate:
+      "<b>%{y}</b><br>" +
+      "<span style='white-space:pre-line'>%{customdata}</span>" +
+      "<extra></extra>",
+    customdata: sorted.map(d => d.rationale)
+  };
+
+  const layout = {
+    margin: { l: 230, r: 20, t: 10, b: 60 },
+    xaxis: { title: "Valuation (Millions GBP)", zeroline: false, gridcolor: "#eee" },
+    yaxis: { automargin: true },
+    legend: { orientation: "h", x: 0.02, y: 1.08 },
+    shapes: [
+      {
+        type: "rect",
+        xref: "x", yref: "paper",
+        x0: clearingRange.low, x1: clearingRange.high,
+        y0: 0, y1: 1,
+        fillcolor: "rgba(128,128,128,0.12)",
+        line: { width: 0 }
+      }
+    ],
+    annotations: [
+      {
+        x: (clearingRange.low + clearingRange.high)/2,
+        y: 1.03,
+        xref: "x", yref: "paper",
+        text: `Clearing range (illustrative): £${clearingRange.low.toFixed(2)}–£${clearingRange.high.toFixed(2)}m`,
+        showarrow: false,
+        font: { size: 12, color: "#444" }
+      }
+    ]
+  };
+
+  Plotly.newPlot("chart", [rangeTrace, baseTrace], layout, {displayModeBar: true, responsive: true});
+
+  // Dropdown setup
+  const sel = document.getElementById("investorSelect");
+  sorted.forEach((d, idx)=>{
+    const opt = document.createElement("option");
+    opt.value = idx;
+    opt.textContent = d.name;
+    sel.appendChild(opt);
+  });
+
+  function renderInvestor(idx){
+    const d = sorted[idx];
+    const range = d.high - d.low;
+
+    document.getElementById("investorSummary").innerHTML = `
+      <b>${d.name}</b><br>
+      Low: £${d.low.toFixed(2)}m<br>
+      Base: £${d.base.toFixed(2)}m<br>
+      High: £${d.high.toFixed(2)}m<br>
+      Range width: £${range.toFixed(2)}m<br><br>
+      <b>Rationale</b><br>
+      <span class="mono">${d.rationale}</span>
+    `;
+
+    const ok = validateRow(d);
+    document.getElementById("checks").innerHTML = ok
+      ? `<div class="ok"><b>Sanity check:</b> Low &lt; Base &lt; High ✅</div>`
+      : `<div class="warn"><b>Sanity check failed:</b> Low &lt; Base &lt; High is not true. Re-check extraction.</div>`;
+
+    // Highlight selected investor on chart
+    const sizes = sorted.map((_, i)=> i===idx ? 18 : 12);
+    Plotly.restyle("chart", {"marker.size":[sizes]}, [1]);
+  }
+
+  sel.addEventListener("change", e => renderInvestor(Number(e.target.value)));
+  renderInvestor(0);
+
+  // Render table
+  function makeTable(rows){
+    return `
+      <table>
+        <thead>
+          <tr>
+            <th>Investor</th>
+            <th>Low</th>
+            <th>Base</th>
+            <th>High</th>
+            <th>Range</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(r=>`
+            <tr>
+              <td>${r.name}</td>
+              <td>£${r.low.toFixed(2)}</td>
+              <td>£${r.base.toFixed(2)}</td>
+              <td>£${r.high.toFixed(2)}</td>
+              <td>£${(r.high-r.low).toFixed(2)}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `;
+  }
+  document.getElementById("tableWrap").innerHTML = makeTable(sorted);
+</script>
+</body>
+</html>
