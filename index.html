@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Valuation Dispersion Dashboard — 89–91 Gresham Street</title>
+  <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
+    h1 { margin: 0 0 6px; font-size: 22px; }
+    .sub { margin: 0 0 18px; color: #444; }
+    .grid { display: grid; grid-template-columns: 1.6fr 1fr; gap: 18px; align-items: start; }
+    .card { border: 1px solid #e6e6e6; border-radius: 12px; padding: 14px 14px 10px; box-shadow: 0 1px 8px rgba(0,0,0,0.04); }
+    .small { color:#555; font-size: 13px; line-height: 1.35; }
+    label { font-size: 13px; color: #333; }
+    select { margin-top: 6px; width: 100%; padding: 8px; border-radius: 10px; border: 1px solid #ddd; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 8px; border-bottom: 1px solid #eee; text-align: right; }
+    th:first-child, td:first-child { text-align: left; }
+    .warn { color:#8a1f1f; background:#fff3f3; border:1px solid #ffd7d7; padding:10px; border-radius:10px; margin-top:10px; }
+    .ok { color:#1a5f2c; background:#f3fff6; border:1px solid #d7ffe1; padding:10px; border-radius:10px; margin-top:10px; }
+  </style>
+</head>
+
+<body>
+  <h1>Valuation Dispersion Dashboard</h1>
+  <p class="sub">Low / Base / High valuations by investor (GBP £m). Hover points for detail.</p>
+
+  <div class="grid">
+    <div class="card">
+      <div id="chart" style="height:520px;"></div>
+      <p class="small">
+        <b>How to read:</b> pale line = Low→High range, red dot = Base case.
+        Grey band = illustrative clearing range (edit in code).
+      </p>
+    </div>
+
+    <div class="card">
+      <label for="investorSelect"><b>Investor details</b></label>
+      <select id="investorSelect"></select>
+
+      <div id="investorSummary" class="small" style="margin-top:10px;"></div>
+
+      <div id="checks" style="margin-top:10px;"></div>
+
+      <hr style="border:none;border-top:1px solid #eee;margin:14px 0;" />
+
+      <div class="small">
+        <b>Table (sorted by Base)</b>
+      </div>
+      <div id="tableWrap" style="margin-top:8px;"></div>
+    </div>
+  </div>
+
+<script>
+  // ✅ Replace/adjust these numbers with your final checked values.
+  // IMPORTANT: Each row must satisfy Low < Base < High.
+  const data = [
+    { investor: "Dutch pension fund",           low: 11.80, base: 13.52, high: 15.36 },
+    { investor: "Canadian pension fund",        low: 11.24, base: 12.87, high: 14.74 },
+    { investor: "German family office",         low: 11.42, base: 13.11, high: 15.10 },
+    // ⚠️ FIX THIS ROW (currently inverted in your sheet). Put correct low/base/high here:
+    { investor: "Singapore sovereign fund",     low: 10.58, base: 11.66, high: 12.89 },
+    { investor: "UAE private fund",             low:  8.28, base:  9.44, high: 10.55 },
+    { investor: "US private equity fund",       low: 10.27, base: 11.18, high: 12.16 },
+    { investor: "UK insurance company",         low:  9.23, base: 10.56, high: 12.11 },
+    { investor: "US investment fund",           low: 10.47, base: 11.73, high: 13.08 }
+  ];
+
+  // Edit your clearing range band here:
+  const clearingRange = { low: 12.00, high: 12.20 };
+
+  function validateRow(r){
+    return (r.low < r.base) && (r.base < r.high);
+  }
+
+  // Sort by base descending (like the example chart)
+  const sorted = [...data].sort((a,b)=> b.base - a.base);
+
+  // Build chart traces
+  const y = sorted.map(d => d.investor);
+  const low = sorted.map(d => d.low);
+  const high = sorted.map(d => d.high);
+  const base = sorted.map(d => d.base);
+
+  // Range lines (as segments)
+  const rangeTrace = {
+    type: "scatter",
+    mode: "lines+markers",
+    x: [].concat(...sorted.map(d => [d.low, d.high, null])),
+    y: [].concat(...sorted.map(d => [d.investor, d.investor, null])),
+    line: { width: 6, color: "rgba(31,119,180,0.35)" },
+    marker: { size: 10, color: "rgba(31,119,180,0.75)" },
+    hoverinfo: "skip",
+    showlegend: false
+  };
+
+  // Base dots
+  const baseTrace = {
+    type: "scatter",
+    mode: "markers",
+    x: base,
+    y: y,
+    marker: { size: 12, color: "rgba(214,39,40,0.95)" },
+    name: "Base Case Value",
+    hovertemplate:
+      "<b>%{y}</b><br>" +
+      "Low: %{customdata[0]:.2f} £m<br>" +
+      "Base: %{x:.2f} £m<br>" +
+      "High: %{customdata[1]:.2f} £m<br>" +
+      "<extra></extra>",
+    customdata: sorted.map(d => [d.low, d.high])
+  };
+
+  const layout = {
+    margin: { l: 220, r: 20, t: 10, b: 60 },
+    xaxis: { title: "Valuation (Millions GBP)", zeroline: false, gridcolor: "#eee" },
+    yaxis: { automargin: true },
+    legend: { orientation: "h", x: 0.02, y: 1.08 },
+    shapes: [
+      // Clearing range highlight band
+      {
+        type: "rect",
+        xref: "x", yref: "paper",
+        x0: clearingRange.low, x1: clearingRange.high,
+        y0: 0, y1: 1,
+        fillcolor: "rgba(128,128,128,0.12)",
+        line: { width: 0 }
+      }
+    ],
+    annotations: [
+      {
+        x: (clearingRange.low + clearingRange.high)/2,
+        y: 1.03,
+        xref: "x", yref: "paper",
+        text: `Clearing range (illustrative): £${clearingRange.low.toFixed(2)}–£${clearingRange.high.toFixed(2)}m`,
+        showarrow: false,
+        font: { size: 12, color: "#444" }
+      }
+    ]
+  };
+
+  Plotly.newPlot("chart", [rangeTrace, baseTrace], layout, {displayModeBar: true, responsive: true});
+
+  // Dropdown
+  const sel = document.getElementById("investorSelect");
+  sorted.forEach((d, idx)=>{
+    const opt = document.createElement("option");
+    opt.value = idx;
+    opt.textContent = d.investor;
+    sel.appendChild(opt);
+  });
+
+  function renderInvestor(idx){
+    const d = sorted[idx];
+    const range = d.high - d.low;
+
+    document.getElementById("investorSummary").innerHTML = `
+      <b>${d.investor}</b><br>
+      Low: £${d.low.toFixed(2)}m<br>
+      Base: £${d.base.toFixed(2)}m<br>
+      High: £${d.high.toFixed(2)}m<br>
+      Range width: £${range.toFixed(2)}m
+    `;
+
+    const ok = validateRow(d);
+    document.getElementById("checks").innerHTML = ok
+      ? `<div class="ok"><b>Sanity check:</b> Low &lt; Base &lt; High ✅</div>`
+      : `<div class="warn"><b>Sanity check failed:</b> Low &lt; Base &lt; High is not true. Re-check extraction.</div>`;
+
+    // highlight selected investor on chart (bigger marker)
+    const sizes = sorted.map((_, i)=> i===idx ? 18 : 12);
+    Plotly.restyle("chart", {"marker.size":[sizes]}, [1]);
+  }
+
+  sel.addEventListener("change", e => renderInvestor(Number(e.target.value)));
+  renderInvestor(0);
+
+  // Render table
+  function makeTable(rows){
+    const html = `
+      <table>
+        <thead>
+          <tr>
+            <th>Investor</th>
+            <th>Low</th>
+            <th>Base</th>
+            <th>High</th>
+            <th>Range</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(r=>`
+            <tr>
+              <td>${r.investor}</td>
+              <td>£${r.low.toFixed(2)}</td>
+              <td>£${r.base.toFixed(2)}</td>
+              <td>£${r.high.toFixed(2)}</td>
+              <td>£${(r.high-r.low).toFixed(2)}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `;
+    return html;
+  }
+  document.getElementById("tableWrap").innerHTML = makeTable(sorted);
+</script>
+</body>
+</html>
